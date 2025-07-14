@@ -1,6 +1,8 @@
 from tkinter import *
 import sqlite3
-import pyttsx3
+import tkinter.messagebox
+
+# import pyttsx3  # Keep this commented if you don't have pyttsx3 installed
 
 # connection to database
 conn = sqlite3.connect('database.db')
@@ -18,13 +20,13 @@ for r in res:
     number.append(ids)
     patients.append(name)
 
+
 # window
 class Application:
     def __init__(self, master):
         self.master = master
-
         self.x = 0
-        
+
         # heading
         self.heading = Label(master, text="Appointments", font=('arial 60 bold'), fg='green')
         self.heading.place(x=350, y=0)
@@ -39,17 +41,30 @@ class Application:
 
         self.pname = Label(master, text="", font=('arial 80 bold'))
         self.pname.place(x=300, y=400)
+
     # function to speak the text and update the text
     def func(self):
-        self.n.config(text=str(number[self.x]))
-        self.pname.config(text=str(patients[self.x]))
-        engine = pyttsx3.init()
-        voices = engine.getProperty('voices')
-        rate = engine.getProperty('rate')
-        engine.setProperty('rate', rate-50)
-        engine.say('Patient number ' + str(number[self.x]) + str(patients[self.x]))
-        engine.runAndWait()
+        try:
+            self.n.config(text=str(number[self.x]))
+            self.pname.config(text=str(patients[self.x]))
+        except IndexError:
+            tkinter.messagebox.showinfo("Completed", "The appointment list is completed")
+            return
+
+        # Uncomment this if you have pyttsx3 installed
+        # try:
+        #     engine = pyttsx3.init()
+        #     voices = engine.getProperty('voices')
+        #     rate = engine.getProperty('rate')
+        #     engine.setProperty('rate', rate-50)
+        #     engine.say('Patient number ' + str(number[self.x]) + str(patients[self.x]))
+        #     engine.runAndWait()
+        # except Exception as e:
+        #     print("Text-to-speech error:", e)
+
         self.x += 1
+
+
 root = Tk()
 b = Application(root)
 root.geometry("1366x768+0+0")
