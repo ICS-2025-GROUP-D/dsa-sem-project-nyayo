@@ -2,7 +2,7 @@ from tkinter import *
 import sqlite3
 import tkinter.messagebox
 
-# import pyttsx3  # Keep this commented if you don't have pyttsx3 installed
+# import pyttsx3
 
 # connection to database
 conn = sqlite3.connect('database.db')
@@ -51,16 +51,7 @@ class Application:
             tkinter.messagebox.showinfo("Completed", "The appointment list is completed")
             return
 
-        # Uncomment this if you have pyttsx3 installed
-        # try:
-        #     engine = pyttsx3.init()
-        #     voices = engine.getProperty('voices')
-        #     rate = engine.getProperty('rate')
-        #     engine.setProperty('rate', rate-50)
-        #     engine.say('Patient number ' + str(number[self.x]) + str(patients[self.x]))
-        #     engine.runAndWait()
-        # except Exception as e:
-        #     print("Text-to-speech error:", e)
+
 
         self.x += 1
 
