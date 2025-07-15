@@ -1,126 +1,200 @@
-# import modules
 from tkinter import *
 import sqlite3
 import tkinter.messagebox
-# connect to the databse.
+from collections import deque
+import heapq
+
+
+# Data Structures
+class PatientQueue:
+    def __init__(self):
+        self.regular_queue = deque()  # Standard queue for regular patients
+        self.priority_queue = []  # Priority queue for emergency cases
+        self.patient_counter = 0  # To track patient IDs
+
+    def add_patient(self, name, is_emergency=False):
+        self.patient_counter += 1
+        patient = {'id': self.patient_counter, 'name': name}
+        if is_emergency:
+            heapq.heappush(self.priority_queue, (-self.patient_counter, patient))  # Negative for max heap
+        else:
+            self.regular_queue.append(patient)
+        return patient
+
+    def get_next_patient(self):
+        if self.priority_queue:
+            return heapq.heappop(self.priority_queue)[1]
+        elif self.regular_queue:
+            return self.regular_queue.popleft()
+        return None
+
+
+# Initialize patient queue
+patient_queue = PatientQueue()
+
+# connection to database
 conn = sqlite3.connect('database.db')
-# cursor to move around the databse
 c = conn.cursor()
 
-# empty list to later append the ids from the database
-ids = []
+# Create table if not exists with proper schema
+try:
+    c.execute('''CREATE TABLE IF NOT EXISTS appointments
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT, age INTEGER, gender TEXT, 
+                  location TEXT, scheduled_time TEXT, 
+                  phone TEXT, is_emergency INTEGER DEFAULT 0)''')
+    conn.commit()
+except sqlite3.Error as e:
+    print(f"Database error: {e}")
+    # Try to alter table if it exists but missing column
+    try:
+        c.execute("ALTER TABLE appointments ADD COLUMN is_emergency INTEGER DEFAULT 0")
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Failed to alter table: {e}")
+
 
 # tkinter window
 class Application:
     def __init__(self, master):
         self.master = master
+        self.create_widgets()
+        self.update_logs()
 
-        # creating the frames in the master
-        self.left = Frame(master, width=800, height=720, bg='lightgreen')
-        self.left.pack(side=LEFT)
+    def create_widgets(self):
+        # Window settings
+        self.master.title("Hospital Appointment System")
+        self.master.geometry("1200x720")
+        self.master.resizable(True, True)
 
-        self.right = Frame(master, width=400, height=720, bg='steelblue')
-        self.right.pack(side=RIGHT)
+        # Frames with proper padding
+        self.left = Frame(self.master, width=800, height=720, bg='lightgreen', padx=20, pady=20)
+        self.left.pack(side=LEFT, fill=BOTH, expand=True)
 
-        # labels for the window
-        self.heading = Label(self.left, text="ABC Hospital Appointments", font=('arial 40 bold'), fg='black', bg='lightgreen')
-        self.heading.place(x=0, y=0)
-        # patients name
-        self.name = Label(self.left, text="Patient's Name", font=('arial 18 bold'), fg='black', bg='lightgreen')
-        self.name.place(x=0, y=100)
+        self.right = Frame(self.master, width=400, height=720, bg='steelblue', padx=20, pady=20)
+        self.right.pack(side=RIGHT, fill=BOTH, expand=True)
 
-        # age
-        self.age = Label(self.left, text="Age", font=('arial 18 bold'), fg='black', bg='lightgreen')
-        self.age.place(x=0, y=140)
+        # Labels and entries with proper spacing
+        self.create_form_fields()
 
-        # gender
-        self.gender = Label(self.left, text="Gender", font=('arial 18 bold'), fg='black', bg='lightgreen')
-        self.gender.place(x=0, y=180)
+        # Buttons with better spacing
+        button_frame = Frame(self.left, bg='lightgreen')
+        button_frame.place(x=200, y=340, width=400, height=60)
 
-        # location
-        self.location = Label(self.left, text="Location", font=('arial 18 bold'), fg='black', bg='lightgreen')
-        self.location.place(x=0, y=220)
+        self.submit = Button(button_frame, text="Add Appointment", width=20, height=2,
+                             bg='steelblue', command=self.add_appointment)
+        self.submit.pack(side=LEFT, padx=10)
 
-        # appointment time
-        self.time = Label(self.left, text="Appointment Time", font=('arial 18 bold'), fg='black', bg='lightgreen')
-        self.time.place(x=0, y=260)
+        self.emergency_btn = Button(button_frame, text="Emergency Case", width=20, height=2,
+                                    bg='red', fg='white', command=lambda: self.add_appointment(True))
+        self.emergency_btn.pack(side=LEFT, padx=10)
 
-        # phone
-        self.phone = Label(self.left, text="Phone Number", font=('arial 18 bold'), fg='black', bg='lightgreen')
-        self.phone.place(x=0, y=300)
+        # Logs display with better formatting
+        self.logs = Label(self.right, text="Queue Status", font=('arial 20 bold'),
+                          fg='white', bg='steelblue')
+        self.logs.pack(pady=10)
 
-        # Entries for all labels============================================================
-        self.name_ent = Entry(self.left, width=30)
-        self.name_ent.place(x=250, y=100)
+        self.box = Text(self.right, width=50, height=30, font=('arial 12'))
+        scrollbar = Scrollbar(self.right, command=self.box.yview)
+        self.box.config(yscrollcommand=scrollbar.set)
 
-        self.age_ent = Entry(self.left, width=30)
-        self.age_ent.place(x=250, y=140)
-    
-        self.gender_ent = Entry(self.left, width=30)
-        self.gender_ent.place(x=250, y=180)
+        self.box.pack(side=LEFT, fill=BOTH, expand=True)
+        scrollbar.pack(side=RIGHT, fill=Y)
 
-        self.location_ent = Entry(self.left, width=30)
-        self.location_ent.place(x=250, y=220)
+    def create_form_fields(self):
+        fields = [
+            ("Patient's Name", 100),
+            ("Age", 140),
+            ("Gender", 180),
+            ("Location", 220),
+            ("Appointment Time", 260),
+            ("Phone Number", 300)
+        ]
 
-        self.time_ent = Entry(self.left, width=30)
-        self.time_ent.place(x=250, y=260)
+        self.entries = []
+        for i, (text, y_pos) in enumerate(fields):
+            label = Label(self.left, text=text, font=('arial 14 bold'),
+                          fg='black', bg='lightgreen')
+            label.place(x=50, y=y_pos)
 
-        self.phone_ent = Entry(self.left, width=30)
-        self.phone_ent.place(x=250, y=300)
+            entry = Entry(self.left, width=30, font=('arial 14'))
+            entry.place(x=250, y=y_pos)
+            self.entries.append(entry)
 
-        # button to perform a command
-        self.submit = Button(self.left, text="Add Appointment", width=20, height=2, bg='steelblue', command=self.add_appointment)
-        self.submit.place(x=300, y=340)
-    
-        # getting the number of appointments fixed to view in the log
-        sql2 = "SELECT ID FROM appointments "
-        self.result = c.execute(sql2)
-        for self.row in self.result:
-            self.id = self.row[0]
-            ids.append(self.id)
-        
-        # ordering the ids
-        self.new = sorted(ids)
-        self.final_id = self.new[len(ids)-1]
-        # displaying the logs in our right frame
-        self.logs = Label(self.right, text="Logs", font=('arial 28 bold'), fg='white', bg='steelblue')
-        self.logs.place(x=0, y=0)
+        self.heading = Label(self.left, text="ABC Hospital Appointments",
+                             font=('arial 24 bold'), fg='black', bg='lightgreen')
+        self.heading.place(x=50, y=20)
 
-        self.box = Text(self.right, width=50, height=40)
-        self.box.place(x=20, y=60)
-        self.box.insert(END, "Total Appointments till now :  " + str(self.final_id))
-    # funtion to call when the submit button is clicked
-    def add_appointment(self):
-        # getting the user inputs
-        self.val1 = self.name_ent.get()
-        self.val2 = self.age_ent.get()
-        self.val3 = self.gender_ent.get()
-        self.val4 = self.location_ent.get()
-        self.val5 = self.time_ent.get()
-        self.val6 = self.phone_ent.get()
-
-        # checking if the user input is empty
-        if self.val1 == '' or self.val2 == '' or self.val3 == '' or self.val4 == '' or self.val5 == '':
+    def add_appointment(self, is_emergency=False):
+        values = [entry.get() for entry in self.entries]
+        if any(val == '' for val in values):
             tkinter.messagebox.showinfo("Warning", "Please Fill Up All Boxes")
-        else:
-            # now we add to the database
-            sql = "INSERT INTO 'appointments' (name, age, gender, location, scheduled_time, phone) VALUES(?, ?, ?, ?, ?, ?)"
-            c.execute(sql, (self.val1, self.val2, self.val3, self.val4, self.val5, self.val6))
+            return
+
+        name, age, gender, location, time, phone = values
+
+        # Validate age is numeric
+        try:
+            int(age)
+        except ValueError:
+            tkinter.messagebox.showinfo("Error", "Age must be a number")
+            return
+
+        # Add to queue
+        patient = patient_queue.add_patient(name, is_emergency)
+
+        # Add to database with error handling
+        try:
+            sql = """INSERT INTO appointments 
+                     (name, age, gender, location, scheduled_time, phone, is_emergency) 
+                     VALUES(?, ?, ?, ?, ?, ?, ?)"""
+            c.execute(sql, (name, age, gender, location, time, phone, int(is_emergency)))
             conn.commit()
-            tkinter.messagebox.showinfo("Success", "Appointment for " +str(self.val1) + " has been created" )
-            
 
-            self.box.insert(END, 'Appointment fixed for ' + str(self.val1) + ' at ' + str(self.val5))
+            # Show success message
+            msg = f"Appointment for {name} has been created"
+            if is_emergency:
+                msg += " (EMERGENCY CASE)"
+            tkinter.messagebox.showinfo("Success", msg)
 
-# creating the object
+            # Update logs
+            self.update_logs()
+            self.clear_entries()
+        except sqlite3.Error as e:
+            tkinter.messagebox.showerror("Database Error", f"Failed to save appointment: {e}")
+
+    def clear_entries(self):
+        for entry in self.entries:
+            entry.delete(0, END)
+
+    def update_logs(self):
+        self.box.delete(1.0, END)
+
+        # Get all appointments from DB
+        try:
+            c.execute("SELECT COUNT(*) FROM appointments")
+            total = c.fetchone()[0]
+            self.box.insert(END, f"Total Appointments: {total}\n\n")
+
+            # Show queue status
+            self.box.insert(END, "Current Queue Status:\n")
+            self.box.insert(END, "=" * 30 + "\n\n")
+
+            # Show emergency cases first
+            self.box.insert(END, "Emergency Cases:\n")
+            self.box.insert(END, "-" * 30 + "\n")
+            for priority, patient in patient_queue.priority_queue:
+                self.box.insert(END, f"ID: {patient['id']} - {patient['name']}\n")
+
+            # Show regular cases
+            self.box.insert(END, "\nRegular Cases:\n")
+            self.box.insert(END, "-" * 30 + "\n")
+            for patient in patient_queue.regular_queue:
+                self.box.insert(END, f"ID: {patient['id']} - {patient['name']}\n")
+        except sqlite3.Error as e:
+            self.box.insert(END, f"Error loading appointments: {e}")
+
+
 root = Tk()
 b = Application(root)
-
-# resolution of the window
-root.geometry("1200x720+0+0")
-
-# preventing the resize feature
-root.resizable(False, False)
-
-# end the loop
 root.mainloop()
