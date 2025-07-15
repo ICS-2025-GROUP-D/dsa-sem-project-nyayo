@@ -1,91 +1,13 @@
 from tkinter import *
-import sqlite3
 import tkinter.messagebox
+from ds.bst import PatientBST
+from db.database import execute_query, fetch_query
 
-
-class PatientBSTNode:
-    def __init__(self, patient):
-        self.patient = patient
-        self.left = None
-        self.right = None
-
-
-class PatientBST:
-    def __init__(self):
-        self.root = None
-        self.load_from_db()
-
-    def load_from_db(self):
-        conn = sqlite3.connect('database.db')
-        c = conn.cursor()
-
-        # Ensure table has all required columns
-        c.execute("PRAGMA table_info(appointments)")
-        columns = [col[1] for col in c.fetchall()]
-
-        if 'is_emergency' not in columns:
-            try:
-                c.execute("ALTER TABLE appointments ADD COLUMN is_emergency INTEGER DEFAULT 0")
-                conn.commit()
-            except sqlite3.Error as e:
-                print(f"Couldn't add is_emergency column: {e}")
-
-        c.execute("SELECT * FROM appointments")
-        for row in c.fetchall():
-            patient = {
-                'id': row[0],
-                'name': row[1],
-                'age': row[2],
-                'gender': row[3],
-                'location': row[4],
-                'phone': row[5],
-                'time': row[6],
-                'is_emergency': bool(row[7]) if len(row) > 7 else False
-            }
-            self.insert(patient)
-        conn.close()
-
-    def insert(self, patient):
-        if self.root is None:
-            self.root = PatientBSTNode(patient)
-        else:
-            self._insert(patient, self.root)
-
-    def _insert(self, patient, current_node):
-        if patient['id'] < current_node.patient['id']:
-            if current_node.left is None:
-                current_node.left = PatientBSTNode(patient)
-            else:
-                self._insert(patient, current_node.left)
-        elif patient['id'] > current_node.patient['id']:
-            if current_node.right is None:
-                current_node.right = PatientBSTNode(patient)
-            else:
-                self._insert(patient, current_node.right)
-
-    def search(self, patient_id):
-        return self._search(patient_id, self.root)
-
-    def _search(self, patient_id, current_node):
-        if current_node is None:
-            return None
-        elif current_node.patient['id'] == patient_id:
-            return current_node.patient
-        elif patient_id < current_node.patient['id']:
-            return self._search(patient_id, current_node.left)
-        else:
-            return self._search(patient_id, current_node.right)
-
-
-# Initialize BST
-patient_bst = PatientBST()
-
-
-class Application:
+class ManagementWindow:
     def __init__(self, master):
         self.master = master
+        self.patient_bst = PatientBST()
 
-        # Window settings
         self.master.title("Patient Management System")
         self.master.geometry("1200x800")
         self.master.resizable(True, True)
@@ -93,16 +15,13 @@ class Application:
         self.create_widgets()
 
     def create_widgets(self):
-        # Main container with padding
         self.main_frame = Frame(self.master, padx=20, pady=20)
         self.main_frame.pack(fill=BOTH, expand=True)
 
-        # heading label with proper spacing
         self.heading = Label(self.main_frame, text="Update Appointments",
                              fg='steelblue', font=('arial 28 bold'))
         self.heading.pack(pady=20)
 
-        # Search area
         search_frame = Frame(self.main_frame)
         search_frame.pack(fill=X, pady=20)
 
@@ -116,7 +35,6 @@ class Application:
                              bg='steelblue', command=self.search_db)
         self.search.pack(side=LEFT, padx=10)
 
-        # Result area with scrollable frame
         result_container = Frame(self.main_frame)
         result_container.pack(fill=BOTH, expand=True)
 
@@ -138,7 +56,6 @@ class Application:
         scrollbar.pack(side="right", fill="y")
 
     def search_db(self):
-        # Clear previous results
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
@@ -147,23 +64,16 @@ class Application:
             tkinter.messagebox.showinfo("Error", "Please enter a search term")
             return
 
-        # Try searching by ID first
         try:
             patient_id = int(search_term)
-            patient = patient_bst.search(patient_id)
+            patient = self.patient_bst.search(patient_id)
             if patient:
                 self.show_patient(patient)
                 return
         except ValueError:
             pass
 
-        # If not found by ID or search term isn't numeric, search by name
-        conn = sqlite3.connect('database.db')
-        c = conn.cursor()
-        sql = "SELECT * FROM appointments WHERE name LIKE ?"
-        c.execute(sql, (f"%{search_term}%",))
-        patients = c.fetchall()
-        conn.close()
+        patients = fetch_query("SELECT * FROM appointments WHERE name LIKE ?", (f"%{search_term}%",))
 
         if not patients:
             tkinter.messagebox.showinfo("Not Found", "No matching patients found")
@@ -211,11 +121,9 @@ class Application:
             btn.pack()
 
     def show_patient(self, patient):
-        # Clear previous results
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
-        # Create form fields with better spacing
         fields = [
             ("Patient ID", 'id', False),
             ("Name", 'name', True),
@@ -248,7 +156,6 @@ class Application:
                 entry.pack(side=LEFT, fill=X, expand=True, padx=5)
                 self.entries[field] = entry
 
-        # Action buttons with better spacing
         btn_frame = Frame(self.scrollable_frame)
         btn_frame.pack(fill=X, pady=20)
 
@@ -259,7 +166,6 @@ class Application:
                command=lambda: self.delete_db(patient['id'])).pack(side=LEFT, padx=20)
 
     def update_db(self, patient_id):
-        # Get updated values
         updated_values = {
             'name': self.entries['name'].get(),
             'age': self.entries['age'].get(),
@@ -270,7 +176,6 @@ class Application:
             'is_emergency': bool(self.entries['is_emergency'].get())
         }
 
-        # Validate
         if not updated_values['name']:
             tkinter.messagebox.showinfo("Error", "Name cannot be empty")
             return
@@ -281,15 +186,12 @@ class Application:
             tkinter.messagebox.showinfo("Error", "Age must be a number")
             return
 
-        # Update database
-        conn = sqlite3.connect('database.db')
-        c = conn.cursor()
         try:
             query = """UPDATE appointments SET 
                        name=?, age=?, gender=?, location=?, 
                        phone=?, scheduled_time=?, is_emergency=?
                        WHERE id=?"""
-            c.execute(query, (
+            execute_query(query, (
                 updated_values['name'],
                 updated_values['age'],
                 updated_values['gender'],
@@ -299,45 +201,21 @@ class Application:
                 int(updated_values['is_emergency']),
                 patient_id
             ))
-            conn.commit()
 
             tkinter.messagebox.showinfo("Updated", "Successfully Updated.")
-
-            # Reinitialize BST to reflect changes
-            global patient_bst
-            patient_bst = PatientBST()
+            self.patient_bst = PatientBST()
         except Exception as e:
             tkinter.messagebox.showerror("Error", f"Failed to update: {str(e)}")
-        finally:
-            conn.close()
 
     def delete_db(self, patient_id):
         if not tkinter.messagebox.askyesno("Confirm", "Delete this patient record?"):
             return
 
-        conn = sqlite3.connect('database.db')
-        c = conn.cursor()
         try:
-            # Delete from database
-            sql = "DELETE FROM appointments WHERE id=?"
-            c.execute(sql, (patient_id,))
-            conn.commit()
-
+            execute_query("DELETE FROM appointments WHERE id=?", (patient_id,))
             tkinter.messagebox.showinfo("Success", "Deleted Successfully")
-
-            # Reinitialize BST to reflect changes
-            global patient_bst
-            patient_bst = PatientBST()
-
-            # Clear the form
+            self.patient_bst = PatientBST()
             for widget in self.scrollable_frame.winfo_children():
                 widget.destroy()
         except Exception as e:
             tkinter.messagebox.showerror("Error", f"Failed to delete: {str(e)}")
-        finally:
-            conn.close()
-
-
-root = Tk()
-b = Application(root)
-root.mainloop()
