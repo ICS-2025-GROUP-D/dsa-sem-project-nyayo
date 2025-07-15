@@ -1,41 +1,23 @@
-# Hospital Appointment System - Final Report
+# Hospital Management System - Project Report
 
-## Architecture Diagram
-```mermaid
-classDiagram
-    class PatientQueue{
-        +regular_queue: deque
-        +priority_queue: heap
-        +add_patient()
-        +get_next_patient()
-    }
-    
-    class PatientHashTable{
-        +table: dict
-        +get_patient()
-        +get_all_patients()
-    }
-    
-    class PatientBST{
-        +root: BSTNode
-        +insert()
-        +search()
-    }
-    
-    class Database{
-        +connection
-        +create_tables()
-        +add_patient()
-    }
-    
-    class AppUI{
-        +create_widgets()
-        +handle_events()
-    }
-    
-    PatientQueue --> Database
-    PatientHashTable --> Database
-    PatientBST --> Database
-    AppUI --> PatientQueue
-    AppUI --> PatientHashTable
-    AppUI --> PatientBST
+## Data Structures Used
+1. **Queue and Priority Queue**
+   - Used for managing patient appointments
+   - Emergency cases get priority
+   - Time Complexity:
+     - Enqueue: O(1) for regular, O(log n) for priority
+     - Dequeue: O(1) for regular, O(log n) for priority
+
+2. **Hash Table**
+   - Used for quick patient lookup by ID
+   - Time Complexity: O(1) average case for search
+
+3. **Binary Search Tree**
+   - Used for efficient patient searching and management
+   - Time Complexity: O(log n) average case for search/insert
+
+## Architecture
+The system follows a MVC-like architecture:
+- **Model**: Data structures and database
+- **View**: Tkinter GUI components
+- **Controller**: Application logic in the UI classes
